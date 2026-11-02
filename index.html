@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Map Art</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=EB+Garamond:wght@400;500;600;700&family=Josefin+Sans:wght@400;500;600;700&family=Libre+Baskerville:wght@400;700&family=Oswald:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Roboto+Condensed:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap"
+    />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <header class="brand">
+        <h1>Map Art</h1>
+        <p class="muted">Design a map, then print it.</p>
+      </header>
+
+      <details class="section" open>
+        <summary>Location</summary>
+        <div class="section-body">
+          <form id="search" class="search">
+            <input id="search-input" type="search" placeholder="City, address or “lat, lng, zoom”" autocomplete="off" />
+            <button type="submit">Go</button>
+          </form>
+          <ul id="search-results" class="results"></ul>
+          <label class="field">
+            <span class="field-label">Snap to print scale</span>
+            <select id="scale-select">
+              <option value="">Choose a scale…</option>
+              <option value="5000">1:5 000</option>
+              <option value="10000">1:10 000</option>
+              <option value="25000">1:25 000</option>
+              <option value="50000">1:50 000</option>
+              <option value="100000">1:100 000</option>
+              <option value="250000">1:250 000</option>
+            </select>
+          </label>
+          <p class="muted small">Drag to pan, scroll to zoom. What you see is what prints.</p>
+        </div>
+      </details>
+
+      <div id="panel-style"></div>
+
+      <details class="section" open>
+        <summary>Print</summary>
+        <div class="section-body">
+          <label class="field">
+            <span class="field-label">Paper</span>
+            <select id="paper"></select>
+          </label>
+          <div id="custom-size" class="row" hidden>
+            <label class="field"><span class="field-label">Width (mm)</span><input id="custom-w" type="number" min="50" step="1" /></label>
+            <label class="field"><span class="field-label">Height (mm)</span><input id="custom-h" type="number" min="50" step="1" /></label>
+          </div>
+          <div class="field">
+            <span class="field-label">Orientation</span>
+            <div class="segmented">
+              <button type="button" data-orientation="portrait">Portrait</button>
+              <button type="button" data-orientation="landscape">Landscape</button>
+            </div>
+          </div>
+          <label class="field">
+            <span class="field-label">Resolution</span>
+            <select id="dpi">
+              <option value="150">150 dpi — draft</option>
+              <option value="200">200 dpi — large posters</option>
+              <option value="300">300 dpi — print quality</option>
+              <option value="400">400 dpi</option>
+              <option value="600">600 dpi — fine art</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="field-head"><span class="field-label">JPEG quality</span><output id="quality-out"></output></span>
+            <input id="quality" type="range" min="0.5" max="1" step="0.01" />
+          </label>
+          <label class="field">
+            <span class="field-head"><span class="field-label">Map detail</span><output id="detail-out"></output></span>
+            <input id="detail" type="range" min="0.5" max="2.5" step="0.05" />
+            <small class="field-hint">Higher shows more streets with finer lines and smaller labels.</small>
+          </label>
+          <p id="output-size" class="muted small"></p>
+        </div>
+      </details>
+
+      <footer class="export">
+        <button id="export" type="button" class="primary">Print to JPEG</button>
+        <p id="export-status" class="status" aria-live="polite"></p>
+      </footer>
+    </aside>
+
+    <main id="stage" class="stage">
+      <div id="readout" class="readout"></div>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
