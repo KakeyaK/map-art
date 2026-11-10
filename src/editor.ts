@@ -44,7 +44,7 @@ export class Editor {
     this.layoutElements();
     this.map = new maplibregl.Map({
       container: this.mapEl,
-      style: style.mapStyle(config),
+      style: style.mapStyle(config, paperSize(print)),
       center: view.center,
       zoom: view.zoom,
       attributionControl: false,
@@ -70,12 +70,14 @@ export class Editor {
 
   setConfig(config: StyleConfig): void {
     this.config = config;
-    this.map.setStyle(this.style.mapStyle(config));
+    this.map.setStyle(this.style.mapStyle(config, paperSize(this.print)));
     this.layout();
   }
 
   setPrint(print: PrintSettings): void {
     this.print = print;
+    // Label sizes may follow the sheet size, so the map style can change too.
+    this.map.setStyle(this.style.mapStyle(this.config, paperSize(print)));
     this.layout();
   }
 
@@ -92,7 +94,7 @@ export class Editor {
 
     this.poster.style.width = `${paper.widthMm * k}px`;
     this.poster.style.height = `${paper.heightMm * k}px`;
-    this.poster.style.background = String(this.config.paper);
+    this.poster.style.background = this.style.sheetColor(this.config);
 
     const rect = this.style.mapRect(this.config, paper);
     Object.assign(this.mapHost.style, {

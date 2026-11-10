@@ -25,6 +25,15 @@ npm run build    # static site in dist/
 - The frame (title, graticule, scale bar, attribution) is drawn on a 2D canvas in millimetres
   by the same function for preview and export.
 - The exported JPEG has its JFIF density set to the chosen DPI, so it opens at the right physical size.
+- **Themes**: 20 built-in looks (colours plus fonts, fills and sheet border). Every colour and
+  fill can be tweaked, and *Save current look as a theme* keeps your own themes in the browser.
+- **Frame elements** (title, subtitle, three notes, scale, north arrow, attribution) each have a
+  position: the band above or below the map, a corner of the map itself, or hidden. Borders are set
+  per side (0 = the map reaches the sheet edge), so a sheet can have a full frame, a bottom band
+  only, or none at all. *Quick layouts* apply common arrangements in one click.
+- **Map label size**: MapLibre lays labels out at a fixed physical size, which looks huge on small
+  sheets (A5/A6). By default labels now scale with the sheet (√ of the short side relative to A3),
+  and *Map labels* has a size slider for every kind of label.
 - Print scale (1:N) is real: it comes from the zoom, latitude and paper size. *Snap to print scale*
   sets the zoom for an exact 1:25 000, 1:50 000, and so on.
 
@@ -36,7 +45,10 @@ Implement `ArtStyle` (`src/types.ts`) and register it in `src/styles/registry.ts
 | ----------------- | ------------------------------------------------------------ |
 | `defaults`, `controls`, `palettes` | its settings and the sidebar UI generated from them |
 | `mapRect`         | where the map sits on the sheet (mm)                         |
-| `mapStyle`        | MapLibre style JSON built from the settings                  |
+| `themeKeys`, `swatchKeys` | which settings a theme sets / shows as swatches      |
+| `mapStyle`        | MapLibre style JSON built from the settings and paper size   |
+| `sheetColor`      | colour of the sheet outside the map                          |
+| `migrate`         | optional upgrade of settings saved by older versions         |
 | `drawOverlay`     | frame / title / legend drawn in mm on a canvas               |
 | `fonts`           | fonts to load before drawing                                 |
 | `textForPlace`    | text fields to fill when a place is picked in search         |

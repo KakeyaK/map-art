@@ -34,24 +34,34 @@ export interface OverlayScene {
   unproject(xMm: number, yMm: number): LngLat;
 }
 
+export type StyleValue = string | number | boolean;
+
 export type Control =
   | { type: 'text'; key: string; label: string; placeholder?: string; hint?: string }
+  | { type: 'textarea'; key: string; label: string; rows?: number; placeholder?: string; hint?: string }
   | { type: 'color'; key: string; label: string }
-  | { type: 'toggle'; key: string; label: string }
-  | { type: 'range'; key: string; label: string; min: number; max: number; step: number; unit?: string }
-  | { type: 'select'; key: string; label: string; options: { value: string; label: string }[] };
+  | { type: 'toggle'; key: string; label: string; hint?: string }
+  | { type: 'range'; key: string; label: string; min: number; max: number; step: number; unit?: string; hint?: string }
+  | { type: 'select'; key: string; label: string; options: { value: string; label: string }[]; hint?: string }
+  /** A row of buttons, each applying several settings at once. */
+  | { type: 'presets'; label: string; presets: { label: string; values: StyleConfig }[]; hint?: string }
+  /** A small heading that splits a long group into parts. */
+  | { type: 'heading'; label: string };
 
 export interface ControlGroup {
   title: string;
   controls: Control[];
 }
 
-export type StyleConfig = Record<string, string | number | boolean>;
+export type StyleConfig = Record<string, StyleValue>;
 
+/** A named look: colours plus any other settings it wants to set (fonts, opacities...). */
 export interface Palette {
   id: string;
   name: string;
-  colors: StyleConfig;
+  values: StyleConfig;
+  /** Saved by the user in this browser (can be deleted). */
+  custom?: boolean;
 }
 
 /**
@@ -64,10 +74,19 @@ export interface ArtStyle {
   description: string;
   defaults: StyleConfig;
   palettes: Palette[];
+  /** Config keys a theme sets; "Save theme" captures exactly these. */
+  themeKeys: string[];
+  /** Keys whose swatches represent a theme in the picker. */
+  swatchKeys: string[];
   controls: ControlGroup[];
+  /** Upgrades settings saved by an older version of the style. */
+  migrate?(saved: StyleConfig): StyleConfig;
   /** Where the map sits on the sheet; the rest is margin for the frame. */
   mapRect(config: StyleConfig, paper: PaperSize): RectMm;
-  mapStyle(config: StyleConfig): StyleSpecification;
+  /** MapLibre style; `paper` lets label sizes follow the sheet size. */
+  mapStyle(config: StyleConfig, paper: PaperSize): StyleSpecification;
+  /** Colour of the sheet outside the map. */
+  sheetColor(config: StyleConfig): string;
   drawOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, config: StyleConfig): void;
   /** Font families the overlay draws with, loaded before every draw. */
   fonts(config: StyleConfig): string[];

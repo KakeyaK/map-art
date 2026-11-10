@@ -361,3 +361,91 @@ button:hover {
     height: 55vh;
   }
 }
+
+textarea {
+  width: 100%;
+  font: inherit;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--field);
+  color: var(--ink);
+  resize: vertical;
+  min-height: 34px;
+}
+
+.field-heading {
+  margin: 8px 0 -2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.section-body > .field-heading:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.field-toggle {
+  flex-wrap: wrap;
+}
+
+.field-toggle .field-hint {
+  flex-basis: 100%;
+}
+
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.preset-buttons button {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.palette {
+  position: relative;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--field);
+  padding: 7px 10px;
+}
+
+.palette:hover {
+  border-color: var(--muted);
+}
+
+.palette-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.palette.custom .palette-name {
+  font-style: italic;
+  padding-right: 14px;
+}
+
+.palette-delete {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  border: none;
+  background: transparent;
+  padding: 0 4px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.palette-delete:hover {
+  color: var(--accent);
+}

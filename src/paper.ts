@@ -9,6 +9,8 @@ export interface PaperPreset {
 
 /** Sizes are given in portrait orientation. */
 export const PAPER_PRESETS: PaperPreset[] = [
+  { id: 'a6', name: 'A6 — 105 × 148 mm', widthMm: 105, heightMm: 148 },
+  { id: 'a5', name: 'A5 — 148 × 210 mm', widthMm: 148, heightMm: 210 },
   { id: 'a4', name: 'A4 — 210 × 297 mm', widthMm: 210, heightMm: 297 },
   { id: 'a3', name: 'A3 — 297 × 420 mm', widthMm: 297, heightMm: 420 },
   { id: 'a2', name: 'A2 — 420 × 594 mm', widthMm: 420, heightMm: 594 },
@@ -18,6 +20,9 @@ export const PAPER_PRESETS: PaperPreset[] = [
   { id: 'tabloid', name: 'Tabloid — 11 × 17 in', widthMm: 279.4, heightMm: 431.8 },
   { id: '18x24', name: 'Poster — 18 × 24 in', widthMm: 457.2, heightMm: 609.6 },
   { id: '24x36', name: 'Poster — 24 × 36 in', widthMm: 609.6, heightMm: 914.4 },
+  { id: '10x15', name: 'Photo — 10 × 15 cm', widthMm: 100, heightMm: 150 },
+  { id: '13x18', name: 'Photo — 13 × 18 cm', widthMm: 130, heightMm: 180 },
+  { id: '20x30', name: '20 × 30 cm', widthMm: 200, heightMm: 300 },
   { id: '30x40', name: '30 × 40 cm', widthMm: 300, heightMm: 400 },
   { id: '50x70', name: '50 × 70 cm', widthMm: 500, heightMm: 700 },
   { id: '70x100', name: '70 × 100 cm', widthMm: 700, heightMm: 1000 },

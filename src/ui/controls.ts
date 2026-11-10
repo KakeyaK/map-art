@@ -1,11 +1,40 @@
-import type { Control, StyleConfig } from '../types';
+import type { Control, StyleConfig, StyleValue } from '../types';
 
-/** Builds a form field for `control`, calling `onChange` with the new value. */
+/**
+ * Builds a form field for `control`, calling `onChange` with the new value,
+ * or `onPatch` when a preset changes several settings at once.
+ */
 export function renderControl(
   control: Control,
   config: StyleConfig,
-  onChange: (key: string, value: string | number | boolean) => void,
+  onChange: (key: string, value: StyleValue) => void,
+  onPatch: (patch: StyleConfig) => void,
 ): HTMLElement {
+  if (control.type === 'heading') {
+    const h = document.createElement('h3');
+    h.className = 'field-heading';
+    h.textContent = control.label;
+    return h;
+  }
+  if (control.type === 'presets') {
+    const row = document.createElement('div');
+    row.className = 'field';
+    const name = document.createElement('span');
+    name.className = 'field-label';
+    name.textContent = control.label;
+    const buttons = document.createElement('div');
+    buttons.className = 'preset-buttons';
+    for (const preset of control.presets) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = preset.label;
+      b.addEventListener('click', () => onPatch(preset.values));
+      buttons.append(b);
+    }
+    row.append(name, buttons);
+    if (control.hint) row.append(hint(control.hint));
+    return row;
+  }
   const row = document.createElement('label');
   row.className = `field field-${control.type}`;
   const name = document.createElement('span');
@@ -18,6 +47,17 @@ export function renderControl(
       const input = document.createElement('input');
       input.type = 'text';
       input.value = String(value ?? '');
+      input.dataset.key = control.key;
+      if (control.placeholder) input.placeholder = control.placeholder;
+      input.addEventListener('input', () => onChange(control.key, input.value));
+      row.append(name, input);
+      if (control.hint) row.append(hint(control.hint));
+      break;
+    }
+    case 'textarea': {
+      const input = document.createElement('textarea');
+      input.rows = control.rows ?? 2;
+      input.value = String(value ?? '').replaceAll('\\n', '\n');
       input.dataset.key = control.key;
       if (control.placeholder) input.placeholder = control.placeholder;
       input.addEventListener('input', () => onChange(control.key, input.value));
@@ -40,6 +80,7 @@ export function renderControl(
       input.checked = Boolean(value);
       input.addEventListener('change', () => onChange(control.key, input.checked));
       row.append(input, name);
+      if (control.hint) row.append(hint(control.hint));
       break;
     }
     case 'range': {
@@ -58,6 +99,7 @@ export function renderControl(
       head.className = 'field-head';
       head.append(name, out);
       row.append(head, input);
+      if (control.hint) row.append(hint(control.hint));
       break;
     }
     case 'select': {
@@ -65,6 +107,7 @@ export function renderControl(
       for (const o of control.options) select.add(new Option(o.label, o.value, false, o.value === String(value)));
       select.addEventListener('change', () => onChange(control.key, select.value));
       row.append(name, select);
+      if (control.hint) row.append(hint(control.hint));
       break;
     }
   }

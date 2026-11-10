@@ -5,7 +5,8 @@ import type {
   StyleSpecification,
 } from 'maplibre-gl';
 import { demSource } from '../../dem';
-import type { StyleConfig } from '../../types';
+import type { PaperSize, StyleConfig } from '../../types';
+import { labelFactor } from './labels';
 
 const OSM = 'openmaptiles';
 
@@ -56,11 +57,16 @@ function nameField(lang: string): ExpressionSpecification {
   return lang === 'local' ? ['get', 'name'] : ['coalesce', ['get', `name:${lang}`], ['get', 'name']];
 }
 
-export function buildMapStyle(c: StyleConfig): StyleSpecification {
+export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecification {
   const k = Number(c.roadWidth);
   const name = nameField(String(c.labelLanguage));
   const color = (key: string) => String(c[key]);
   const visible = (key: string) => ({ visibility: c[key] ? 'visible' : 'none' }) as const;
+  const lf = labelFactor(c, paper);
+  /** Label size multiplier for one kind of label. */
+  const size = (key: string) => lf * Number(c[key] ?? 1);
+  const halo = (w: number) => w * Number(c.haloWidth ?? 1);
+  const upper = c.placeUppercase ? 'uppercase' : 'none';
 
   const layers: LayerSpecification[] = [
     { id: 'paper', type: 'background', paint: { 'background-color': color('paper') } },
@@ -79,7 +85,7 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       'source-layer': 'landcover',
       filter: ['match', ['get', 'class'], ['wood', 'grass', 'wetland'], true, false],
       layout: visible('showParks'),
-      paint: { 'fill-color': color('park'), 'fill-opacity': 0.75 },
+      paint: { 'fill-color': color('park'), 'fill-opacity': 0.75 * Number(c.parkOpacity) },
     },
     {
       id: 'green-landuse',
@@ -88,7 +94,7 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       'source-layer': 'landuse',
       filter: ['match', ['get', 'class'], GREEN_LANDUSE, true, false],
       layout: visible('showParks'),
-      paint: { 'fill-color': color('park'), 'fill-opacity': 0.9 },
+      paint: { 'fill-color': color('park'), 'fill-opacity': Number(c.parkOpacity) },
     },
     {
       id: 'park',
@@ -96,7 +102,7 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       source: OSM,
       'source-layer': 'park',
       layout: visible('showParks'),
-      paint: { 'fill-color': color('park'), 'fill-opacity': 0.9, 'fill-outline-color': color('contour') },
+      paint: { 'fill-color': color('park'), 'fill-opacity': Number(c.parkOpacity), 'fill-outline-color': color('contour') },
     },
     {
       id: 'hillshade',
@@ -104,8 +110,8 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       source: 'dem',
       layout: visible('showHillshade'),
       paint: {
-        'hillshade-exaggeration': 0.35,
-        'hillshade-shadow-color': 'rgba(0,0,0,0.35)',
+        'hillshade-exaggeration': Math.min(1, 0.35 * Number(c.hillshadeStrength ?? 1)),
+        'hillshade-shadow-color': color('hillshadeShadow') + '59',
         'hillshade-highlight-color': 'rgba(255,255,255,0.15)',
         'hillshade-accent-color': 'rgba(0,0,0,0)',
       },
@@ -118,8 +124,8 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       layout: { ...visible('showContours'), 'line-join': 'round' },
       paint: {
         'line-color': color('contour'),
-        'line-width': ['match', ['get', 'level'], 1, 0.9, 0.45],
-        'line-opacity': ['match', ['get', 'level'], 1, 0.9, 0.65],
+        'line-width': ['match', ['get', 'level'], 1, 0.9 * Number(c.contourWidth), 0.45 * Number(c.contourWidth)],
+        'line-opacity': ['match', ['get', 'level'], 1, 0.9 * Number(c.contourOpacity), 0.65 * Number(c.contourOpacity)],
       },
     },
     {
@@ -136,7 +142,8 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       source: OSM,
       'source-layer': 'water',
       filter: ['!=', ['get', 'brunnel'], 'tunnel'],
-      paint: { 'line-color': color('waterLine'), 'line-width': width(1, [10, 0.3], [14, 0.8], [18, 2]) },
+      layout: { visibility: Number(c.waterLineWidth) > 0 ? 'visible' : 'none' },
+      paint: { 'line-color': color('waterLine'), 'line-width': width(Math.max(0.01, Number(c.waterLineWidth)), [10, 0.3], [14, 0.8], [18, 2]) },
     },
     {
       id: 'waterway',
@@ -219,7 +226,7 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       minzoom: 5,
       filter: roadClass('motorway'),
       layout: { 'line-cap': 'round', 'line-join': 'round' },
-      paint: { 'line-color': color('road'), 'line-width': width(k, [5, 0.4], [12, 2], [15, 5], [18, 15]) },
+      paint: { 'line-color': color('motorway'), 'line-width': width(k, [5, 0.4], [12, 2], [15, 5], [18, 15]) },
     },
     // Hollow centre gives motorways the double-line look of survey maps.
     {
@@ -229,7 +236,7 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       'source-layer': 'transportation',
       minzoom: 11,
       filter: roadClass('motorway'),
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      layout: { 'line-cap': 'round', 'line-join': 'round', ...visible('motorwayCasing') },
       paint: { 'line-color': color('urban'), 'line-width': width(k, [11, 0.3], [12, 0.8], [15, 2.6], [18, 9]) },
     },
     {
@@ -262,10 +269,10 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
         'symbol-placement': 'line',
         'text-field': ['number-format', ['get', 'ele'], {}],
         'text-font': ['Noto Sans Regular'],
-        'text-size': 8,
+        'text-size': 8 * size('contourLabelSize'),
         'text-max-angle': 25,
       },
-      paint: { 'text-color': color('contour'), 'text-halo-color': color('paper'), 'text-halo-width': 1 },
+      paint: { 'text-color': color('contour'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1) },
     },
     ...(['point', 'line'] as const).map(
       (placement): LayerSpecification => ({
@@ -283,10 +290,10 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
           'symbol-placement': placement,
           'text-field': name,
           'text-font': ['Noto Sans Italic'],
-          'text-size': 11,
+          'text-size': 11 * size('waterLabelSize'),
           'text-letter-spacing': 0.1,
         },
-        paint: { 'text-color': color('waterLine'), 'text-halo-color': color('paper'), 'text-halo-width': 1 },
+        paint: { 'text-color': color('waterLine'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1) },
       }),
     ),
     {
@@ -301,11 +308,11 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
         'symbol-placement': 'line',
         'text-field': name,
         'text-font': ['Noto Sans Italic'],
-        'text-size': 10,
+        'text-size': 10 * size('waterLabelSize'),
         'text-letter-spacing': 0.15,
         'text-transform': 'uppercase',
       },
-      paint: { 'text-color': color('waterLine'), 'text-halo-color': color('paper'), 'text-halo-width': 1 },
+      paint: { 'text-color': color('waterLine'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1) },
     },
     {
       id: 'street-labels',
@@ -323,10 +330,10 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
         'symbol-placement': 'line',
         'text-field': name,
         'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 7, 16, 11],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 7 * size('streetLabelSize'), 16, 11 * size('streetLabelSize')],
         'text-max-angle': 30,
       },
-      paint: { 'text-color': color('label'), 'text-halo-color': color('paper'), 'text-halo-width': 1.2 },
+      paint: { 'text-color': color('label'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1.2) },
     },
     {
       id: 'neighbourhood-labels',
@@ -336,15 +343,15 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       minzoom: 11,
       filter: ['match', ['get', 'class'], ['suburb', 'quarter', 'neighbourhood', 'village', 'hamlet'], true, false],
       layout: {
-        ...visible('showPlaceLabels'),
+        ...visible('showNeighbourhoodLabels'),
         'text-field': name,
         'text-font': ['Noto Sans Regular'],
-        'text-size': ['match', ['get', 'class'], 'suburb', 10, 8.5],
-        'text-transform': 'uppercase',
+        'text-size': ['match', ['get', 'class'], 'suburb', 10 * size('suburbLabelSize'), 8.5 * size('suburbLabelSize')],
+        'text-transform': upper,
         'text-letter-spacing': 0.12,
         'text-max-width': 8,
       },
-      paint: { 'text-color': color('label'), 'text-opacity': 0.8, 'text-halo-color': color('paper'), 'text-halo-width': 1.2 },
+      paint: { 'text-color': color('label'), 'text-opacity': 0.8, 'text-halo-color': color('halo'), 'text-halo-width': halo(1.2) },
     },
     {
       id: 'city-labels',
@@ -355,13 +362,18 @@ export function buildMapStyle(c: StyleConfig): StyleSpecification {
       layout: {
         ...visible('showPlaceLabels'),
         'text-field': name,
-        'text-font': ['Noto Sans Bold'],
-        'text-size': byClassOverZoom([6, 12, 15], { city: [12, 26, 30] }, [8, 14, 18], ['linear']),
-        'text-transform': 'uppercase',
+        'text-font': [String(c.placeFont)],
+        'text-size': byClassOverZoom(
+          [6, 12, 15],
+          { city: [12, 26, 30].map((v) => v * size('cityLabelSize')) },
+          [8, 14, 18].map((v) => v * size('cityLabelSize')),
+          ['linear'],
+        ),
+        'text-transform': upper,
         'text-letter-spacing': 0.08,
         'text-max-width': 8,
       },
-      paint: { 'text-color': color('label'), 'text-halo-color': color('paper'), 'text-halo-width': 1.5 },
+      paint: { 'text-color': color('label'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1.5) },
     },
   ];
 

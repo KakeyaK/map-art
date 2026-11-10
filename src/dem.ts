@@ -17,4 +17,4 @@ export const demSource = new mlcontour.DemSource({
 
 demSource.setupMaplibre(maplibregl);
 
-export const DEM_ATTRIBUTION = 'Terrain: Mapzen / AWS Terrain Tiles';
+export { DEM_ATTRIBUTION } from './credits';

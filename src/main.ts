@@ -6,12 +6,14 @@ import { formatDegrees, formatScale, parseCoordinates, zoomForScale } from './ge
 import { searchPlaces, type Place } from './geocode';
 import { cssPxPerMm, DEFAULT_PRINT, PAPER_PRESETS, type PrintSettings } from './paper';
 import { ART_STYLES, getArtStyle } from './styles/registry';
-import type { StyleConfig } from './types';
+import type { Palette, StyleConfig, StyleValue } from './types';
 import { renderControl, section } from './ui/controls';
 
 interface AppState {
   styleId: string;
   configs: Record<string, StyleConfig>;
+  /** Themes the user saved, per art style. */
+  customThemes: Record<string, Palette[]>;
   print: PrintSettings;
   view: View;
 }
@@ -22,13 +24,16 @@ function loadState(): AppState {
   const fallback: AppState = {
     styleId: ART_STYLES[0].id,
     configs: {},
+    customThemes: {},
     print: { ...DEFAULT_PRINT },
     view: { center: [-46.6333, -23.5505], zoom: 12 },
   };
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<AppState> | null;
     if (!saved) return fallback;
-    return { ...fallback, ...saved, print: { ...fallback.print, ...saved.print } };
+    const configs = { ...saved.configs };
+    for (const [id, c] of Object.entries(configs)) configs[id] = getArtStyle(id).migrate?.(c) ?? c;
+    return { ...fallback, ...saved, configs, print: { ...fallback.print, ...saved.print } };
   } catch {
     return fallback;
   }
@@ -64,21 +69,64 @@ const editor = new Editor(stage, style(), config(), state.print, state.view, (vi
 // ── Config updates ────────────────────────────────────────────────────────────
 
 let configFrame = 0;
-function setConfigValue(key: string, value: string | number | boolean): void {
-  state.configs[state.styleId] = { ...state.configs[state.styleId], [key]: value };
+function setConfigValue(key: string, value: StyleValue): void {
+  const patch: StyleConfig = { [key]: value };
+  // Editing a theme colour turns the look into a custom one.
+  if (style().themeKeys.includes(key)) patch.palette = '';
+  state.configs[state.styleId] = { ...state.configs[state.styleId], ...patch };
   save();
   cancelAnimationFrame(configFrame);
-  configFrame = requestAnimationFrame(() => editor.setConfig(config()));
+  configFrame = requestAnimationFrame(() => {
+    editor.setConfig(config());
+    syncPrintForm();
+  });
+  if (patch.palette === '') markActiveTheme('');
 }
 
-function applyPalette(id: string): void {
-  const palette = style().palettes.find((p) => p.id === id);
-  if (!palette) return;
-  state.configs[state.styleId] = { ...state.configs[state.styleId], ...palette.colors, palette: id };
+/** Applies several settings at once and refreshes the sidebar to show them. */
+function patchConfig(patch: StyleConfig): void {
+  state.configs[state.styleId] = { ...state.configs[state.styleId], ...patch };
   save();
   editor.setConfig(config());
   renderStylePanel();
+  syncPrintForm();
 }
+
+const themes = (): Palette[] => [...style().palettes, ...(state.customThemes[state.styleId] ?? [])];
+
+function applyTheme(id: string): void {
+  const theme = themes().find((p) => p.id === id);
+  if (theme) patchConfig({ ...theme.values, palette: id });
+}
+
+function saveTheme(): void {
+  const name = prompt('Name for this theme:', 'My theme')?.trim();
+  if (!name) return;
+  const c = config();
+  const values: StyleConfig = {};
+  for (const key of style().themeKeys) if (c[key] !== undefined) values[key] = c[key];
+  const theme: Palette = { id: `custom-${Date.now().toString(36)}`, name, values, custom: true };
+  state.customThemes[state.styleId] = [...(state.customThemes[state.styleId] ?? []), theme];
+  patchConfig({ palette: theme.id });
+}
+
+function deleteTheme(id: string): void {
+  const theme = themes().find((p) => p.id === id);
+  if (!theme?.custom || !confirm(`Delete the theme "${theme.name}"?`)) return;
+  state.customThemes[state.styleId] = (state.customThemes[state.styleId] ?? []).filter((p) => p.id !== id);
+  if (config().palette === id) state.configs[state.styleId] = { ...state.configs[state.styleId], palette: '' };
+  save();
+  renderStylePanel();
+}
+
+function markActiveTheme(id: string): void {
+  for (const b of panel.querySelectorAll<HTMLElement>('.palette[data-theme]')) {
+    b.classList.toggle('active', b.dataset.theme === id);
+  }
+}
+
+/** Sections the user opened or closed, kept across sidebar re-renders. */
+const openSections = new Map<string, boolean>();
 
 function renderStylePanel(): void {
   const s = style();
@@ -98,24 +146,59 @@ function renderStylePanel(): void {
   desc.textContent = s.description;
   const swatches = document.createElement('div');
   swatches.className = 'palettes';
-  for (const p of s.palettes) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = `palette${c.palette === p.id ? ' active' : ''}`;
+  for (const p of themes()) {
+    const b = document.createElement('div');
+    b.className = `palette${c.palette === p.id ? ' active' : ''}${p.custom ? ' custom' : ''}`;
+    b.dataset.theme = p.id;
     b.title = p.name;
-    const chips = ['paper', 'urban', 'road', 'water', 'frame']
-      .map((k) => `<i style="background:${p.colors[k]}"></i>`)
-      .join('');
-    b.innerHTML = `<span class="chips">${chips}</span><span>${p.name}</span>`;
-    b.addEventListener('click', () => applyPalette(p.id));
+    b.tabIndex = 0;
+    b.setAttribute('role', 'button');
+    const chips = document.createElement('span');
+    chips.className = 'chips';
+    for (const key of s.swatchKeys) {
+      const chip = document.createElement('i');
+      chip.style.background = String(p.values[key] ?? c[key]);
+      chips.append(chip);
+    }
+    const label = document.createElement('span');
+    label.className = 'palette-name';
+    label.textContent = p.name;
+    b.append(chips, label);
+    if (p.custom) {
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'palette-delete';
+      del.title = `Delete "${p.name}"`;
+      del.textContent = '×';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteTheme(p.id);
+      });
+      b.append(del);
+    }
+    b.addEventListener('click', () => applyTheme(p.id));
+    b.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        applyTheme(p.id);
+      }
+    });
     swatches.append(b);
   }
-  looks.body.append(field('Art style', styleSelect), desc, swatches);
+  const saveButton = document.createElement('button');
+  saveButton.type = 'button';
+  saveButton.textContent = 'Save current look as a theme';
+  saveButton.addEventListener('click', saveTheme);
+  const themeHint = document.createElement('p');
+  themeHint.className = 'muted small';
+  themeHint.textContent = 'Pick a theme, then fine-tune colours, fonts and fills below. Saved themes stay in this browser.';
+  looks.body.append(field('Art style', styleSelect), desc, swatches, saveButton, themeHint);
   panel.append(looks.root);
 
   s.controls.forEach((group, i) => {
-    const sec = section(group.title, i === 0);
-    for (const control of group.controls) sec.body.append(renderControl(control, c, setConfigValue));
+    const sec = section(group.title, openSections.get(group.title) ?? i === 0);
+    sec.root.addEventListener('toggle', () => openSections.set(group.title, sec.root.open));
+    for (const control of group.controls) sec.body.append(renderControl(control, c, setConfigValue, patchConfig));
     panel.append(sec.root);
   });
 }
@@ -168,7 +251,7 @@ function resultItem(place: Place): HTMLLIElement {
     editor.map.fitBounds([[w, s], [e, n]], { padding: 20, maxZoom: 15, animate: false });
     for (const [key, value] of Object.entries(style().textForPlace(place))) {
       setConfigValue(key, value);
-      const input = panel.querySelector<HTMLInputElement>(`input[data-key="${key}"]`);
+      const input = panel.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-key="${key}"]`);
       if (input) input.value = value;
     }
     results.replaceChildren();

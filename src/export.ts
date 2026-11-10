@@ -63,7 +63,7 @@ export async function renderPoster({ style, config, print, view, onStatus }: Exp
 
   const map = new maplibregl.Map({
     container,
-    style: style.mapStyle(config),
+    style: style.mapStyle(config, dims.paper),
     center: view.center,
     zoom: view.zoom,
     pixelRatio,
@@ -100,7 +100,7 @@ export async function renderPoster({ style, config, print, view, onStatus }: Exp
     if (!ctx) throw new Error('Could not allocate a canvas this large. Lower the DPI or the paper size.');
 
     const pxPerMm = dims.width / dims.paper.widthMm;
-    ctx.fillStyle = String(config.paper);
+    ctx.fillStyle = style.sheetColor(config);
     ctx.fillRect(0, 0, dims.width, dims.height);
     ctx.drawImage(
       mapCanvas,
