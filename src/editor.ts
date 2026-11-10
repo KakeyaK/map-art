@@ -2,7 +2,7 @@ import { maplibregl } from './maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import { paperSize, cssPxPerMm, type PrintSettings } from './paper';
 import { buildScene, loadFonts, mapCssSize } from './scene';
-import type { ArtStyle, LngLat, OverlayScene, StyleConfig } from './types';
+import type { ArtStyle, DataStatus, LngLat, OverlayScene, StyleConfig } from './types';
 
 export interface View {
   center: LngLat;
@@ -24,6 +24,10 @@ export class Editor {
   private overlay: HTMLCanvasElement;
   private frame = 0;
   private screenPxPerMm = 1;
+  private statusEl: HTMLDivElement;
+  private dataTimer = 0;
+  private dataAbort?: AbortController;
+  private dataPending: Promise<void> = Promise.resolve();
 
   constructor(
     private stage: HTMLElement,
@@ -39,7 +43,9 @@ export class Editor {
     this.overlay = el('canvas', 'poster-overlay');
     this.mapHost.append(this.mapEl);
     this.poster.append(this.mapHost, this.overlay);
-    stage.append(this.poster);
+    this.statusEl = el('div', 'data-status');
+    this.statusEl.hidden = true;
+    stage.append(this.poster, this.statusEl);
 
     this.layoutElements();
     this.map = new maplibregl.Map({
@@ -59,6 +65,8 @@ export class Editor {
     this.map.keyboard.disableRotation();
     this.map.on('move', () => this.scheduleOverlay());
     this.map.on('load', () => this.scheduleOverlay());
+    this.map.on('moveend', () => this.scheduleData());
+    this.scheduleData(0);
 
     new ResizeObserver(() => this.layout()).observe(stage);
   }
@@ -72,6 +80,55 @@ export class Editor {
     this.config = config;
     this.map.setStyle(this.style.mapStyle(config, paperSize(this.print)));
     this.layout();
+    this.scheduleData();
+  }
+
+  /** Resolves once any style data for the current view (e.g. transit lines) has loaded. */
+  async dataReady(): Promise<void> {
+    if (this.dataTimer) {
+      clearTimeout(this.dataTimer);
+      this.dataTimer = 0;
+      this.syncData();
+    }
+    await this.dataPending;
+  }
+
+  private scheduleData(delay = 500): void {
+    if (!this.style.data) return;
+    clearTimeout(this.dataTimer);
+    this.dataTimer = window.setTimeout(() => {
+      this.dataTimer = 0;
+      this.syncData();
+    }, delay);
+  }
+
+  private syncData(): void {
+    const data = this.style.data;
+    if (!data) return;
+    this.dataAbort?.abort();
+    const abort = (this.dataAbort = new AbortController());
+    const b = this.map.getBounds();
+    this.dataPending = data
+      .sync(
+        { bounds: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()], zoom: this.map.getZoom() },
+        this.config,
+        abort.signal,
+        (s) => this.showStatus(s),
+      )
+      .then((changed) => {
+        if (!changed || abort.signal.aborted) return;
+        this.map.setStyle(this.style.mapStyle(this.config, paperSize(this.print)));
+        this.layout();
+      })
+      .catch((err: Error) => {
+        if (err.name !== 'AbortError') this.showStatus({ state: 'error', message: err.message });
+      });
+  }
+
+  private showStatus(s: DataStatus): void {
+    this.statusEl.hidden = s.state === 'idle' || !s.message;
+    this.statusEl.textContent = s.message;
+    this.statusEl.className = `data-status ${s.state}`;
   }
 
   setPrint(print: PrintSettings): void {
