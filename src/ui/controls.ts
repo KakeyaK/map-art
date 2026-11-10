@@ -1,39 +1,16 @@
 import type { Control, StyleConfig, StyleValue } from '../types';
 
-/**
- * Builds a form field for `control`, calling `onChange` with the new value,
- * or `onPatch` when a preset changes several settings at once.
- */
+/** Builds a form field for `control`, calling `onChange` with the new value. */
 export function renderControl(
   control: Control,
   config: StyleConfig,
   onChange: (key: string, value: StyleValue) => void,
-  onPatch: (patch: StyleConfig) => void,
 ): HTMLElement {
   if (control.type === 'heading') {
     const h = document.createElement('h3');
     h.className = 'field-heading';
     h.textContent = control.label;
     return h;
-  }
-  if (control.type === 'presets') {
-    const row = document.createElement('div');
-    row.className = 'field';
-    const name = document.createElement('span');
-    name.className = 'field-label';
-    name.textContent = control.label;
-    const buttons = document.createElement('div');
-    buttons.className = 'preset-buttons';
-    for (const preset of control.presets) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = preset.label;
-      b.addEventListener('click', () => onPatch(preset.values));
-      buttons.append(b);
-    }
-    row.append(name, buttons);
-    if (control.hint) row.append(hint(control.hint));
-    return row;
   }
   const row = document.createElement('label');
   row.className = `field field-${control.type}`;

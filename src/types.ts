@@ -43,10 +43,32 @@ export type Control =
   | { type: 'toggle'; key: string; label: string; hint?: string }
   | { type: 'range'; key: string; label: string; min: number; max: number; step: number; unit?: string; hint?: string }
   | { type: 'select'; key: string; label: string; options: { value: string; label: string }[]; hint?: string }
-  /** A row of buttons, each applying several settings at once. */
-  | { type: 'presets'; label: string; presets: { label: string; values: StyleConfig }[]; hint?: string }
   /** A small heading that splits a long group into parts. */
   | { type: 'heading'; label: string };
+
+/**
+ * A frame element (title, scale bar...) the user can drag on the poster.
+ * Its settings follow a naming convention: `${id}X` / `${id}Y` place its anchor
+ * as a fraction of the sheet, `${id}Align` says whether the anchor is its left
+ * edge, centre or right edge, and `${id}Show` hides it.
+ */
+export interface FrameElement {
+  id: string;
+  label: string;
+  /** Config key of the element's text, edited next to it in the sidebar. */
+  textKey?: string;
+  /** Help shown under the element's settings while it is selected. */
+  textHint?: string;
+  /** False when the element must stay on the print (e.g. licence credits). */
+  canHide?: boolean;
+  /** Extra settings shown while the element is selected. */
+  controls: Control[];
+}
+
+/** Where a frame element was drawn, in paper millimetres. */
+export interface ElementBox extends RectMm {
+  id: string;
+}
 
 export interface ControlGroup {
   title: string;
@@ -76,9 +98,13 @@ export interface ArtStyle {
   palettes: Palette[];
   /** Config keys a theme sets; "Save theme" captures exactly these. */
   themeKeys: string[];
-  /** Keys whose swatches represent a theme in the picker. */
+  /** Keys whose swatches preview a theme. */
   swatchKeys: string[];
+  /** Settings shown when the user picks the "Custom" theme. */
+  themeControls: Control[];
   controls: ControlGroup[];
+  /** Frame elements that can be dragged on the poster. */
+  elements: FrameElement[];
   /** Upgrades settings saved by an older version of the style. */
   migrate?(saved: StyleConfig): StyleConfig;
   /** Where the map sits on the sheet; the rest is margin for the frame. */
@@ -87,7 +113,8 @@ export interface ArtStyle {
   mapStyle(config: StyleConfig, paper: PaperSize): StyleSpecification;
   /** Colour of the sheet outside the map. */
   sheetColor(config: StyleConfig): string;
-  drawOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, config: StyleConfig): void;
+  /** Draws the frame and returns where each visible element ended up. */
+  drawOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, config: StyleConfig): ElementBox[];
   /** Font families the overlay draws with, loaded before every draw. */
   fonts(config: StyleConfig): string[];
   /** Text fields to fill in when the user picks a place from search. */

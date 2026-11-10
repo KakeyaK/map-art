@@ -30,6 +30,8 @@ body {
   background: var(--panel);
   border-right: 1px solid var(--line);
   overflow-y: auto;
+  /* Cards scrolled into view stay clear of the sticky export footer. */
+  scroll-padding-bottom: 110px;
   display: flex;
   flex-direction: column;
 }
@@ -236,25 +238,6 @@ button:hover {
   border-color: var(--ink);
 }
 
-.palettes {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-}
-
-.palette {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 12px;
-}
-
-.palette.active {
-  border-color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--ink);
-}
-
 .chips {
   display: flex;
   width: 100%;
@@ -399,28 +382,70 @@ textarea {
   flex-basis: 100%;
 }
 
-.preset-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
+/* Theme */
 
-.preset-buttons button {
-  padding: 5px 8px;
-  font-size: 12px;
-}
-
-.palette {
-  position: relative;
+.theme-picker > summary {
+  list-style: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--field);
-  padding: 7px 10px;
 }
 
-.palette:hover {
+.theme-picker > summary::-webkit-details-marker {
+  display: none;
+}
+
+.theme-picker > summary .chips {
+  width: 90px;
+  flex: none;
+}
+
+.theme-picker > summary .palette-name {
+  flex: 1;
+}
+
+.theme-picker > summary::after {
+  content: '▾';
+  color: var(--muted);
+}
+
+.theme-picker[open] > summary::after {
+  content: '▴';
+}
+
+.theme-picker > summary:hover {
   border-color: var(--muted);
+}
+
+.palettes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.palette.active {
+  border-color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--ink);
+}
+
+.palette.saved .palette-name,
+.palette.custom .palette-name {
+  font-style: italic;
 }
 
 .palette-name {
@@ -430,22 +455,144 @@ textarea {
   max-width: 100%;
 }
 
-.palette.custom .palette-name {
-  font-style: italic;
-  padding-right: 14px;
+.theme-custom {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
 }
 
-.palette-delete {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
+.theme-custom > :not(.field-color) {
+  grid-column: 1 / -1;
+}
+
+.theme-custom .field-color .field-label {
+  font-size: 12px;
+}
+
+button.link {
+  align-self: flex-start;
   border: none;
-  background: transparent;
-  padding: 0 4px;
-  line-height: 1.2;
+  background: none;
+  padding: 0;
   color: var(--muted);
+  text-decoration: underline;
+  font-size: 12px;
 }
 
-.palette-delete:hover {
+button.link:hover {
   color: var(--accent);
+}
+
+/* Frame elements */
+
+.element {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  margin: 0 -8px;
+  border-radius: 6px;
+}
+
+.element.selected {
+  background: var(--bg);
+}
+
+.element-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.element-name {
+  flex: 1;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.element.is-hidden .element-name,
+.element.is-hidden textarea {
+  opacity: 0.45;
+}
+
+.element-detail:empty {
+  display: none;
+}
+
+.element-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.segmented-3 {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.segmented-3 button {
+  border-radius: 0;
+  padding: 5px;
+}
+
+.segmented-3 button + button {
+  border-left: none;
+}
+
+/* Selection on the poster (preview only, never printed) */
+
+.poster-selection {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.poster-selection-hide {
+  position: absolute;
+  top: -11px;
+  right: -11px;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  line-height: 1;
+  font-size: 14px;
+  pointer-events: auto;
+}
+
+.poster-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background-image:
+    linear-gradient(to right, rgba(194, 40, 47, 0.35) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(194, 40, 47, 0.35) 1px, transparent 1px);
+}
+
+.poster-grid.visible {
+  opacity: 1;
+}
+
+.poster-grid.free {
+  opacity: 0.3;
+}
+
+.poster.over-element,
+.poster.over-element *,
+.poster.dragging,
+.poster.dragging * {
+  cursor: move !important;
+}
+
+.poster.dragging {
+  touch-action: none;
 }

@@ -1,31 +1,38 @@
-import { describe, expect, it } from 'vitest';
-import type { StyleConfig } from '../../types';
+import { describe, expect, it, vi } from 'vitest';
+import type { OverlayScene, StyleConfig } from '../../types';
+import { layoutGrid, snapTo } from '../../grid';
 import { labelFactor } from './labels';
 import { migrate } from './migrate';
-import { topographicMapRect } from './overlay';
+import { topographic } from './index';
+import { drawTopographicOverlay, elementFont, topographicMapRect } from './overlay';
 import { THEME_KEYS, THEMES } from './themes';
 
+// The map style starts a DEM worker on import; these tests only need the frame.
+vi.mock('./map-style', () => ({ buildMapStyle: () => ({}) }));
+
 const A3_LANDSCAPE = { widthMm: 420, heightMm: 297 };
+const base: StyleConfig = topographic.defaults;
+const noMargins: StyleConfig = { margin: 0, marginTop: 0, marginBottom: 0 };
 
-const base: StyleConfig = {
-  title: 'TITLE', note1: 'A', subtitle: 'B', note2: 'C\nD', note3: 'E',
-  titlePos: 'top-center', titleSize: 1, titleSpacing: 0, titleFont: 'x', titleWeight: 400, titleColor: '#000',
-  note1Pos: 'top-left', note1Size: 0.8, subtitlePos: 'top-left', subtitleSize: 1, note2Pos: 'top-right', note2Size: 0.9,
-  note3Pos: 'bottom-left', note3Size: 0.8, scalePos: 'bottom-center', scaleStyle: 'both', scaleSize: 1, scaleLength: 1,
-  northPos: 'hidden', northStyle: 'arrow', northSize: 1, attribPos: 'bottom-right', attribSize: 1,
-  margin: 1, marginTop: 1, marginRight: 1, marginBottom: 1, marginLeft: 1,
-  grid: 'lines', gridLabelsTop: true, gridLabelsRight: true, gridLabelsBottom: true, gridLabelsLeft: true,
-  textFont: 'y', frame: '#000', sheet: '#fff', showContours: true,
-};
+/** Canvas stand-in: text is 1 mm wide per character at any font size, drawing does nothing. */
+function fakeContext(): CanvasRenderingContext2D {
+  return new Proxy({} as Record<string | symbol, unknown>, {
+    get: (target, key) => (key in target ? target[key] : key === 'measureText' ? (t: string) => ({ width: t.length }) : () => {}),
+    set: (target, key, value) => ((target[key] = value), true),
+  }) as unknown as CanvasRenderingContext2D;
+}
 
-const everythingOnMap: StyleConfig = {
-  titlePos: 'map-bottom-center', note1Pos: 'hidden', subtitlePos: 'map-bottom-center', note2Pos: 'hidden',
-  note3Pos: 'hidden', scalePos: 'map-bottom-left', northPos: 'map-top-right', attribPos: 'map-bottom-right',
-  marginTop: 0, marginRight: 0, marginBottom: 0, marginLeft: 0, grid: 'none',
-};
+function boxes(c: StyleConfig) {
+  const paper = A3_LANDSCAPE;
+  const scene: OverlayScene = {
+    paper, mapRect: topographicMapRect(c, paper), pxPerMm: 1, center: [0, 0], zoom: 10, scale: 50000,
+    project: ([lng, lat]) => [lng, lat], unproject: (x, y) => [x, y],
+  };
+  return drawTopographicOverlay(fakeContext(), scene, { ...c, grid: 'none' });
+}
 
 describe('frame layout', () => {
-  it('leaves room on every side by default', () => {
+  it('leaves room on every side by default, more above and below for the texts', () => {
     const r = topographicMapRect(base, A3_LANDSCAPE);
     expect(r.x).toBeGreaterThan(5);
     expect(r.y).toBeGreaterThan(20);
@@ -33,38 +40,56 @@ describe('frame layout', () => {
     expect(r.y + r.h).toBeLessThan(A3_LANDSCAPE.heightMm - 20);
   });
 
-  it('is full bleed with no borders and everything on the map', () => {
-    expect(topographicMapRect({ ...base, ...everythingOnMap }, A3_LANDSCAPE)).toEqual({ x: 0, y: 0, w: 420, h: 297 });
+  it('is full bleed with no margins', () => {
+    expect(topographicMapRect({ ...base, ...noMargins }, A3_LANDSCAPE)).toEqual({ x: 0, y: 0, w: 420, h: 297 });
   });
 
-  it('keeps a border only on the sides that have one', () => {
-    const r = topographicMapRect({ ...base, ...everythingOnMap, marginBottom: 1 }, A3_LANDSCAPE);
+  it('keeps a margin only where there is one', () => {
+    const r = topographicMapRect({ ...base, ...noMargins, marginBottom: 1 }, A3_LANDSCAPE);
     expect(r).toMatchObject({ x: 0, y: 0, w: 420 });
-    expect(r.h).toBeCloseTo(297 - 297 * 0.045, 6);
+    expect(r.h).toBeCloseTo(297 - 297 * 0.105, 6);
+  });
+});
+
+describe('frame elements', () => {
+  it('are placed at their anchor, as fractions of the sheet', () => {
+    const c = { ...base, title: 'ABCD', titleX: 0.5, titleY: 0.1, titleAlign: 'center' };
+    const title = boxes(c).find((b) => b.id === 'title')!;
+    expect(title.x + title.w / 2).toBeCloseTo(210, 6);
+    expect(title.y).toBeCloseTo(29.7, 6);
+    expect(title.w).toBe(4);
   });
 
-  it('makes room for elements in a band even with no margin', () => {
-    const r = topographicMapRect({ ...base, ...everythingOnMap, titlePos: 'top-center' }, A3_LANDSCAPE);
-    expect(r.y).toBeGreaterThan(10);
-    expect(r.y + r.h).toBe(297);
+  it('grow away from their anchor according to the alignment', () => {
+    const right = boxes({ ...base, note1: 'ABC', note1X: 0.5, note1Align: 'right' }).find((b) => b.id === 'note1')!;
+    expect(right.x + right.w).toBeCloseTo(210, 6);
+    const left = boxes({ ...base, note1: 'ABC', note1X: 0.5, note1Align: 'left' }).find((b) => b.id === 'note1')!;
+    expect(left.x).toBeCloseTo(210, 6);
   });
 
-  it('frees the band when its elements are hidden or empty', () => {
-    const shown = topographicMapRect(base, A3_LANDSCAPE);
-    const hidden = topographicMapRect({ ...base, note1Pos: 'hidden', subtitlePos: 'hidden', note2: '', title: '' }, A3_LANDSCAPE);
-    expect(hidden.y).toBeLessThan(shown.y);
+  it('are left out when hidden or empty', () => {
+    const ids = boxes({ ...base, titleShow: false, note1: '  ' }).map((b) => b.id);
+    expect(ids).not.toContain('title');
+    expect(ids).not.toContain('note1');
+    expect(ids).toContain('subtitle');
+  });
+
+  it('all have a default position', () => {
+    for (const e of topographic.elements) {
+      expect(base[`${e.id}X`], e.id).toBeTypeOf('number');
+      expect(base[`${e.id}Y`], e.id).toBeTypeOf('number');
+    }
   });
 });
 
 describe('map label size', () => {
-  it('is unchanged on A3 and smaller on A6 when following the paper', () => {
-    const c = { labelSizing: 'paper', labelScale: 1 };
-    expect(labelFactor(c, A3_LANDSCAPE)).toBeCloseTo(1, 6);
-    expect(labelFactor(c, { widthMm: 105, heightMm: 148 })).toBeCloseTo(Math.sqrt(105 / 297), 6);
+  it('is unchanged on A3 and smaller on A6', () => {
+    expect(labelFactor({ labelScale: 1 }, A3_LANDSCAPE)).toBeCloseTo(1, 6);
+    expect(labelFactor({ labelScale: 1 }, { widthMm: 105, heightMm: 148 })).toBeCloseTo(Math.sqrt(105 / 297), 6);
   });
 
-  it('only applies the user scale in fixed mode', () => {
-    expect(labelFactor({ labelSizing: 'fixed', labelScale: 0.5 }, { widthMm: 105, heightMm: 148 })).toBe(0.5);
+  it('applies the user scale on top', () => {
+    expect(labelFactor({ labelScale: 2 }, A3_LANDSCAPE)).toBeCloseTo(2, 6);
   });
 });
 
@@ -85,9 +110,51 @@ describe('migrate', () => {
       showScale: false, paper: '#101217', frame: '#eeeeee', road: '#f1c36b',
     });
     expect(m).toMatchObject({
-      note1: 'SURVEY', subtitle: 'REGION', note2: 'SHEET\n{lat}', note3: 'a\nb', scalePos: 'hidden',
+      note1: 'SURVEY', subtitle: 'REGION', note2: 'SHEET\n{lat}', note3: 'a\nb', scaleShow: false,
       sheet: '#101217', halo: '#101217', titleColor: '#eeeeee', motorway: '#f1c36b',
     });
     expect(m.topLeft1).toBeUndefined();
+  });
+
+  it('turns slots into positions, stacking elements that shared one', () => {
+    const m = migrate({ titlePos: 'map-bottom-center', subtitlePos: 'map-bottom-center', northPos: 'hidden', gridDensity: 2 });
+    expect(m).toMatchObject({ titleShow: true, titleX: 0.5, titleAlign: 'center', subtitleShow: true, northShow: false });
+    expect(Number(m.subtitleY)).toBeGreaterThan(Number(m.titleY));
+    expect(m.titlePos).toBeUndefined();
+    expect(m.gridDensity).toBeUndefined();
+  });
+});
+
+describe('layout grid', () => {
+  const map = { x: 13.4, y: 31.2, w: 393.2, h: 234.6 };
+  const g = layoutGrid(map, A3_LANDSCAPE);
+
+  it('has the map edges and centre lines on grid lines', () => {
+    for (const x of [map.x, map.x + map.w / 2, map.x + map.w]) expect(snapTo(x, g.originX, g.stepX)).toBeCloseTo(x, 9);
+    for (const y of [map.y, map.y + map.h / 2, map.y + map.h]) expect(snapTo(y, g.originY, g.stepY)).toBeCloseTo(y, 9);
+  });
+
+  it('has nearly square cells about 1/40 of the short side', () => {
+    expect(g.stepX).toBeCloseTo(297 / 40, 0);
+    expect(g.stepY).toBeCloseTo(297 / 40, 0);
+  });
+
+  it('snaps to the nearest line, in the margins too', () => {
+    expect(snapTo(map.x - g.stepX * 0.6, g.originX, g.stepX)).toBeCloseTo(map.x - g.stepX, 9);
+    expect(snapTo(map.x + g.stepX * 0.4, g.originX, g.stepX)).toBeCloseTo(map.x, 9);
+  });
+});
+
+describe('element fonts', () => {
+  const theme = { titleFont: 'Serif A', titleWeight: 500, textFont: 'Sans B' };
+
+  it('follow the theme by default', () => {
+    expect(elementFont({ ...theme, titleFontFace: '', titleFontWeight: '' }, 'title')).toEqual({ name: 'Serif A', weight: 500 });
+    expect(elementFont(theme, 'note1')).toEqual({ name: 'Sans B', weight: 400 });
+  });
+
+  it('can be picked per element', () => {
+    expect(elementFont({ ...theme, note1FontFace: 'Mono C', note1FontWeight: '700' }, 'note1')).toEqual({ name: 'Mono C', weight: 700 });
+    expect(elementFont({ ...theme, titleFontWeight: '700' }, 'title')).toEqual({ name: 'Serif A', weight: 700 });
   });
 });

@@ -63,9 +63,6 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
   const color = (key: string) => String(c[key]);
   const visible = (key: string) => ({ visibility: c[key] ? 'visible' : 'none' }) as const;
   const lf = labelFactor(c, paper);
-  /** Label size multiplier for one kind of label. */
-  const size = (key: string) => lf * Number(c[key] ?? 1);
-  const halo = (w: number) => w * Number(c.haloWidth ?? 1);
   const upper = c.placeUppercase ? 'uppercase' : 'none';
 
   const layers: LayerSpecification[] = [
@@ -110,8 +107,8 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
       source: 'dem',
       layout: visible('showHillshade'),
       paint: {
-        'hillshade-exaggeration': Math.min(1, 0.35 * Number(c.hillshadeStrength ?? 1)),
-        'hillshade-shadow-color': color('hillshadeShadow') + '59',
+        'hillshade-exaggeration': 0.35,
+        'hillshade-shadow-color': 'rgba(0,0,0,0.35)',
         'hillshade-highlight-color': 'rgba(255,255,255,0.15)',
         'hillshade-accent-color': 'rgba(0,0,0,0)',
       },
@@ -124,7 +121,7 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
       layout: { ...visible('showContours'), 'line-join': 'round' },
       paint: {
         'line-color': color('contour'),
-        'line-width': ['match', ['get', 'level'], 1, 0.9 * Number(c.contourWidth), 0.45 * Number(c.contourWidth)],
+        'line-width': ['match', ['get', 'level'], 1, 0.9, 0.45],
         'line-opacity': ['match', ['get', 'level'], 1, 0.9 * Number(c.contourOpacity), 0.65 * Number(c.contourOpacity)],
       },
     },
@@ -142,8 +139,7 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
       source: OSM,
       'source-layer': 'water',
       filter: ['!=', ['get', 'brunnel'], 'tunnel'],
-      layout: { visibility: Number(c.waterLineWidth) > 0 ? 'visible' : 'none' },
-      paint: { 'line-color': color('waterLine'), 'line-width': width(Math.max(0.01, Number(c.waterLineWidth)), [10, 0.3], [14, 0.8], [18, 2]) },
+      paint: { 'line-color': color('waterLine'), 'line-width': width(1, [10, 0.3], [14, 0.8], [18, 2]) },
     },
     {
       id: 'waterway',
@@ -269,10 +265,10 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
         'symbol-placement': 'line',
         'text-field': ['number-format', ['get', 'ele'], {}],
         'text-font': ['Noto Sans Regular'],
-        'text-size': 8 * size('contourLabelSize'),
+        'text-size': 8 * lf,
         'text-max-angle': 25,
       },
-      paint: { 'text-color': color('contour'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1) },
+      paint: { 'text-color': color('contour'), 'text-halo-color': color('halo'), 'text-halo-width': 1 },
     },
     ...(['point', 'line'] as const).map(
       (placement): LayerSpecification => ({
@@ -290,10 +286,10 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
           'symbol-placement': placement,
           'text-field': name,
           'text-font': ['Noto Sans Italic'],
-          'text-size': 11 * size('waterLabelSize'),
+          'text-size': 11 * lf,
           'text-letter-spacing': 0.1,
         },
-        paint: { 'text-color': color('waterLine'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1) },
+        paint: { 'text-color': color('waterLine'), 'text-halo-color': color('halo'), 'text-halo-width': 1 },
       }),
     ),
     {
@@ -308,11 +304,11 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
         'symbol-placement': 'line',
         'text-field': name,
         'text-font': ['Noto Sans Italic'],
-        'text-size': 10 * size('waterLabelSize'),
+        'text-size': 10 * lf,
         'text-letter-spacing': 0.15,
         'text-transform': 'uppercase',
       },
-      paint: { 'text-color': color('waterLine'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1) },
+      paint: { 'text-color': color('waterLine'), 'text-halo-color': color('halo'), 'text-halo-width': 1 },
     },
     {
       id: 'street-labels',
@@ -330,10 +326,10 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
         'symbol-placement': 'line',
         'text-field': name,
         'text-font': ['Noto Sans Regular'],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 7 * size('streetLabelSize'), 16, 11 * size('streetLabelSize')],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 12, 7 * lf, 16, 11 * lf],
         'text-max-angle': 30,
       },
-      paint: { 'text-color': color('label'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1.2) },
+      paint: { 'text-color': color('label'), 'text-halo-color': color('halo'), 'text-halo-width': 1.2 },
     },
     {
       id: 'neighbourhood-labels',
@@ -346,12 +342,12 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
         ...visible('showNeighbourhoodLabels'),
         'text-field': name,
         'text-font': ['Noto Sans Regular'],
-        'text-size': ['match', ['get', 'class'], 'suburb', 10 * size('suburbLabelSize'), 8.5 * size('suburbLabelSize')],
+        'text-size': ['match', ['get', 'class'], 'suburb', 10 * lf, 8.5 * lf],
         'text-transform': upper,
         'text-letter-spacing': 0.12,
         'text-max-width': 8,
       },
-      paint: { 'text-color': color('label'), 'text-opacity': 0.8, 'text-halo-color': color('halo'), 'text-halo-width': halo(1.2) },
+      paint: { 'text-color': color('label'), 'text-opacity': 0.8, 'text-halo-color': color('halo'), 'text-halo-width': 1.2 },
     },
     {
       id: 'city-labels',
@@ -365,15 +361,15 @@ export function buildMapStyle(c: StyleConfig, paper: PaperSize): StyleSpecificat
         'text-font': [String(c.placeFont)],
         'text-size': byClassOverZoom(
           [6, 12, 15],
-          { city: [12, 26, 30].map((v) => v * size('cityLabelSize')) },
-          [8, 14, 18].map((v) => v * size('cityLabelSize')),
+          { city: [12, 26, 30].map((v) => v * lf) },
+          [8, 14, 18].map((v) => v * lf),
           ['linear'],
         ),
         'text-transform': upper,
         'text-letter-spacing': 0.08,
         'text-max-width': 8,
       },
-      paint: { 'text-color': color('label'), 'text-halo-color': color('halo'), 'text-halo-width': halo(1.5) },
+      paint: { 'text-color': color('label'), 'text-halo-color': color('halo'), 'text-halo-width': 1.5 },
     },
   ];
 

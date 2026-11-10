@@ -7,7 +7,7 @@ import {
   groupThousands,
   niceFloor,
 } from '../../geo';
-import type { OverlayScene, PaperSize, RectMm, StyleConfig } from '../../types';
+import type { ElementBox, OverlayScene, PaperSize, RectMm, StyleConfig } from '../../types';
 
 const STRINGS: Record<string, { scale: string }> = {
   en: { scale: 'Scale' },
@@ -17,54 +17,26 @@ const STRINGS: Record<string, { scale: string }> = {
 };
 
 
-// ── Slots ─────────────────────────────────────────────────────────────────────
-
-/** Where a frame element sits: in the band above/below the map, inside a map corner, or nowhere. */
-export const SLOTS = [
-  'top-left', 'top-center', 'top-right',
-  'bottom-left', 'bottom-center', 'bottom-right',
-  'map-top-left', 'map-top-center', 'map-top-right',
-  'map-bottom-left', 'map-bottom-center', 'map-bottom-right',
-  'hidden',
-] as const;
-export type Slot = (typeof SLOTS)[number];
-
-export const SLOT_OPTIONS = [
-  { value: 'top-left', label: 'Top band · left' },
-  { value: 'top-center', label: 'Top band · centre' },
-  { value: 'top-right', label: 'Top band · right' },
-  { value: 'bottom-left', label: 'Bottom band · left' },
-  { value: 'bottom-center', label: 'Bottom band · centre' },
-  { value: 'bottom-right', label: 'Bottom band · right' },
-  { value: 'map-top-left', label: 'On the map · top left' },
-  { value: 'map-top-center', label: 'On the map · top centre' },
-  { value: 'map-top-right', label: 'On the map · top right' },
-  { value: 'map-bottom-left', label: 'On the map · bottom left' },
-  { value: 'map-bottom-center', label: 'On the map · bottom centre' },
-  { value: 'map-bottom-right', label: 'On the map · bottom right' },
-  { value: 'hidden', label: 'Hidden' },
-];
-
-/** Frame elements in stacking order: earlier ones sit higher when they share a slot. */
-export const ELEMENTS = ['title', 'note1', 'subtitle', 'note2', 'note3', 'scale', 'north', 'attrib'] as const;
+/** Frame elements; each one is placed freely on the sheet (see `FrameElement`). */
+export const ELEMENTS = ['title', 'subtitle', 'note1', 'note2', 'note3', 'scale', 'north', 'attrib'] as const;
 type ElementId = (typeof ELEMENTS)[number];
 
 type Align = 'left' | 'center' | 'right';
 
 // ── Metrics ───────────────────────────────────────────────────────────────────
 
-const SIDES = ['Top', 'Right', 'Bottom', 'Left'] as const;
-type Side = (typeof SIDES)[number];
+type Side = 'Top' | 'Right' | 'Bottom' | 'Left';
 
 /** Frame proportions all derive from the sheet's short side, so any size looks alike. */
 function metrics(c: StyleConfig, paper: PaperSize) {
   const unit = Math.min(paper.widthMm, paper.heightMm);
   const small = unit * 0.0085; // grid labels, attribution
   const meta = unit * 0.0115; // notes
-  const margin = (side: Side) => Math.max(0, unit * 0.045 * Number(c.margin) * Number(c[`margin${side}`] ?? 1));
-  const gridOn = String(c.grid) !== 'none';
   const tick = small * 0.7;
-  const labelsOn = (side: Side) => gridOn && Boolean(c[`gridLabels${side}`]);
+  /** Top and bottom margins hold the texts; the sides are a plain border. */
+  const margin = (side: Side) =>
+    Math.max(0, side === 'Top' || side === 'Bottom' ? unit * 0.105 * Number(c[`margin${side}`]) : unit * 0.045 * Number(c.margin));
+  const labelBand = (side: Side) => (side === 'Top' || side === 'Bottom' ? small * 2.2 : tick + 0.6 + small * 3.9);
   return {
     unit,
     small,
@@ -73,10 +45,8 @@ function metrics(c: StyleConfig, paper: PaperSize) {
     gap: meta * 0.6,
     tick,
     margin,
-    labelsOn,
-    /** Room the graticule labels need outside the neatline on each side. */
-    labelBand: (side: Side) =>
-      !labelsOn(side) ? 0 : side === 'Top' || side === 'Bottom' ? small * 2.2 : tick + 0.6 + small * 3.9,
+    /** Graticule labels go on every side whose margin is wide enough for them. */
+    labelsOn: (side: Side) => String(c.grid) !== 'none' && margin(side) >= labelBand(side),
   };
 }
 type Metrics = ReturnType<typeof metrics>;
@@ -101,6 +71,21 @@ interface Block {
 
 const family = (name: unknown, fallback: string) => `"${String(name)}", ${fallback}`;
 const textFamily = (c: StyleConfig) => family(c.textFont, '"Arial Narrow", sans-serif');
+
+/** Elements whose typeface can be picked one by one. */
+export const TEXT_ELEMENTS = ['title', 'subtitle', 'note1', 'note2', 'note3'] as const;
+
+/**
+ * Font an element's text is drawn with: its own `${id}FontFace` / `${id}FontWeight`
+ * when set, otherwise the theme's (title font for the title, text font for the rest).
+ */
+export function elementFont(c: StyleConfig, id: string): { name: string; weight: number } {
+  const title = id === 'title';
+  return {
+    name: String(c[`${id}FontFace`] || (title ? c.titleFont : c.textFont)),
+    weight: Number(c[`${id}FontWeight`] || (title ? c.titleWeight : 400)),
+  };
+}
 
 function setFont(p: Painter, sizeMm: number, fam: string, weight = 400, spacingEm = 0): void {
   p.ctx.font = `${weight} ${sizeMm * p.k}px ${fam}`;
@@ -139,7 +124,7 @@ function textBlock(
 function scaleGeometry(p: Painter) {
   const s = Number(p.c.scaleSize);
   const groundMPerMm = p.scene.scale / 1000;
-  const totalM = niceFloor(p.scene.mapRect.w * 0.2 * Number(p.c.scaleLength) * groundMPerMm);
+  const totalM = niceFloor(p.scene.mapRect.w * 0.2 * groundMPerMm);
   const lead = Math.round(totalM / 10 ** Math.floor(Math.log10(totalM)));
   const segments = lead === 2 ? 4 : 5;
   const segM = totalM / segments;
@@ -298,8 +283,10 @@ function elementBlock(id: ElementId, c: StyleConfig, m: Metrics): Block | null {
   const notes = (key: string) => {
     const lines = text(key);
     if (!lines.length) return null;
+    const font = elementFont(c, key);
     return textBlock(lines, m.meta * Number(c[`${key}Size`] ?? 1), {
-      family: textFamily(c),
+      family: family(font.name, '"Arial Narrow", sans-serif'),
+      weight: font.weight,
       color: String(c.frame),
       spacing: 0.04,
     });
@@ -308,9 +295,10 @@ function elementBlock(id: ElementId, c: StyleConfig, m: Metrics): Block | null {
     case 'title': {
       const lines = text('title');
       if (!lines.length) return null;
+      const font = elementFont(c, 'title');
       return textBlock(lines, m.title, {
-        family: family(c.titleFont, 'serif'),
-        weight: Number(c.titleWeight),
+        family: family(font.name, 'serif'),
+        weight: font.weight,
         color: String(c.titleColor),
         spacing: Number(c.titleSpacing),
         lineHeight: 1.12,
@@ -338,50 +326,47 @@ function elementBlock(id: ElementId, c: StyleConfig, m: Metrics): Block | null {
   }
 }
 
-function slotOf(c: StyleConfig, id: ElementId): Slot {
-  const v = String(c[`${id}Pos`] ?? 'hidden') as Slot;
-  return (SLOTS as readonly string[]).includes(v) ? v : 'hidden';
+export function topographicMapRect(c: StyleConfig, paper: PaperSize): RectMm {
+  const m = metrics(c, paper);
+  const left = m.margin('Left');
+  const top = m.margin('Top');
+  const w = Math.max(10, paper.widthMm - left - m.margin('Right'));
+  const h = Math.max(10, paper.heightMm - top - m.margin('Bottom'));
+  return { x: left, y: top, w, h };
 }
 
-/** Blocks grouped by slot, in stacking order. */
-function blocksBySlot(c: StyleConfig, m: Metrics): Map<Slot, Block[]> {
-  const out = new Map<Slot, Block[]>();
+const alignOf = (c: StyleConfig, id: string): Align => {
+  const a = String(c[`${id}Align`]);
+  return a === 'left' || a === 'right' ? a : 'center';
+};
+
+interface Placed {
+  block: Block;
+  /** Anchor x (left edge, centre or right edge per `align`). */
+  x: number;
+  align: Align;
+  box: ElementBox;
+}
+
+/** Visible elements with their boxes; `{id}X`/`{id}Y` are fractions of the sheet. */
+function placeElements(p: Painter): Placed[] {
+  const { paper } = p.scene;
+  const out: Placed[] = [];
   for (const id of ELEMENTS) {
-    const slot = slotOf(c, id);
-    if (slot === 'hidden') continue;
-    const block = elementBlock(id, c, m);
+    if (p.c[`${id}Show`] === false) continue;
+    const block = elementBlock(id, p.c, p.m);
     if (!block) continue;
-    out.set(slot, [...(out.get(slot) ?? []), block]);
+    const align = alignOf(p.c, id);
+    const w = block.width(p);
+    const x = Number(p.c[`${id}X`]) * paper.widthMm;
+    const y = Number(p.c[`${id}Y`]) * paper.heightMm;
+    const left = align === 'left' ? x : align === 'center' ? x - w / 2 : x - w;
+    out.push({ block, x, align, box: { id, x: left, y, w, h: block.height } });
   }
   return out;
 }
 
-const stackHeight = (blocks: Block[] | undefined, gap: number) =>
-  !blocks?.length ? 0 : blocks.reduce((h, b) => h + b.height, 0) + gap * (blocks.length - 1);
-
-// ── Layout ────────────────────────────────────────────────────────────────────
-
-function layout(c: StyleConfig, paper: PaperSize) {
-  const m = metrics(c, paper);
-  const slots = blocksBySlot(c, m);
-  const band = (prefix: 'top' | 'bottom') =>
-    Math.max(...(['left', 'center', 'right'] as const).map((a) => stackHeight(slots.get(`${prefix}-${a}`), m.gap)));
-  const topContent = band('top');
-  const bottomContent = band('bottom');
-  // Text in a band keeps a little air from the sheet edge even with no margin.
-  const outer = (side: Side, content: number) => (content > 0 ? Math.max(m.margin(side), m.meta * 0.8) : m.margin(side));
-  const top = outer('Top', topContent) + (topContent ? topContent + m.gap : 0) + m.labelBand('Top');
-  const bottom = outer('Bottom', bottomContent) + (bottomContent ? bottomContent + m.gap : 0) + m.labelBand('Bottom');
-  const left = Math.max(m.margin('Left'), m.labelBand('Left'));
-  const right = Math.max(m.margin('Right'), m.labelBand('Right'));
-  const w = Math.max(10, paper.widthMm - left - right);
-  const h = Math.max(10, paper.heightMm - top - bottom);
-  return { m, slots, rect: { x: left, y: top, w, h } as RectMm };
-}
-
-export function topographicMapRect(config: StyleConfig, paper: PaperSize): RectMm {
-  return layout(config, paper).rect;
-}
+const overlaps = (a: RectMm, b: RectMm) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 export function fillTokens(text: string, scene: OverlayScene): string {
   const now = new Date();
@@ -396,9 +381,9 @@ export function fillTokens(text: string, scene: OverlayScene): string {
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
-export function drawTopographicOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, c: StyleConfig): void {
+export function drawTopographicOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, c: StyleConfig): ElementBox[] {
   const k = scene.pxPerMm;
-  const { m, slots } = layout(c, scene.paper);
+  const m = metrics(c, scene.paper);
   const r = scene.mapRect;
   const p: Painter = { ctx, scene, k, c, m };
   const W = scene.paper.widthMm;
@@ -417,66 +402,38 @@ export function drawTopographicOverlay(ctx: CanvasRenderingContext2D, scene: Ove
   drawGraticule(p);
 
   // Neatline.
-  const neat = Number(c.neatline);
-  if (neat > 0) {
-    ctx.strokeStyle = String(c.frame);
-    ctx.lineWidth = 0.35 * neat * k;
-    ctx.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
-  }
+  ctx.strokeStyle = String(c.frame);
+  ctx.lineWidth = 0.35 * k;
+  ctx.strokeRect(r.x * k, r.y * k, r.w * k, r.h * k);
 
   drawOuterBorder(p);
 
-  // Bands above and below the map.
-  const xFor = (align: Align) =>
-    align === 'left' ? Math.max(r.x, m.meta) : align === 'right' ? Math.min(r.x + r.w, W - m.meta) : r.x + r.w / 2;
-  const topBottom = r.y - m.labelBand('Top') - m.gap;
-  const bottomTop = r.y + r.h + m.labelBand('Bottom') + m.gap;
-  for (const align of ['left', 'center', 'right'] as const) {
-    const above = slots.get(`top-${align}`);
-    if (above) drawStack(p, above, xFor(align), topBottom - stackHeight(above, m.gap), align);
-    const below = slots.get(`bottom-${align}`);
-    if (below) drawStack(p, below, xFor(align), bottomTop, align);
-  }
-
-  // Elements placed on the map itself.
-  const inset = m.unit * 0.02;
-  const boxed = String(c.insetBox) !== 'none';
-  const pad = boxed ? m.meta * 0.7 : 0;
-  for (const v of ['top', 'bottom'] as const) {
-    for (const align of ['left', 'center', 'right'] as const) {
-      const blocks = slots.get(`map-${v}-${align}`);
-      if (!blocks) continue;
-      const sh = stackHeight(blocks, m.gap);
-      const x = align === 'left' ? r.x + inset + pad : align === 'right' ? r.x + r.w - inset - pad : r.x + r.w / 2;
-      const y = v === 'top' ? r.y + inset + pad : r.y + r.h - inset - pad - sh;
-      if (boxed) {
-        const sw = Math.max(...blocks.map((b) => b.width(p)));
-        const bx = align === 'left' ? x : align === 'right' ? x - sw : x - sw / 2;
-        ctx.save();
-        ctx.globalAlpha = Number(c.insetOpacity);
-        ctx.fillStyle = String(c.sheet);
-        ctx.fillRect((bx - pad) * k, (y - pad) * k, (sw + 2 * pad) * k, (sh + 2 * pad) * k);
-        ctx.restore();
-        if (c.insetBox === 'box-border') {
-          ctx.strokeStyle = String(c.frame);
-          ctx.lineWidth = 0.25 * k;
-          ctx.strokeRect((bx - pad) * k, (y - pad) * k, (sw + 2 * pad) * k, (sh + 2 * pad) * k);
-        }
+  // Elements over the map get a sheet-coloured box so they stay legible.
+  const placed = placeElements(p);
+  const pad = m.meta * 0.7;
+  for (const { block, x, align, box } of placed) {
+    if (String(c.insetBox) !== 'none' && overlaps(box, r)) {
+      const bx = (box.x - pad) * k;
+      const by = (box.y - pad) * k;
+      const bw = (box.w + 2 * pad) * k;
+      const bh = (box.h + 2 * pad) * k;
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = String(c.sheet);
+      ctx.fillRect(bx, by, bw, bh);
+      ctx.restore();
+      if (c.insetBox === 'box-border') {
+        ctx.strokeStyle = String(c.frame);
+        ctx.lineWidth = 0.25 * k;
+        ctx.strokeRect(bx, by, bw, bh);
       }
-      drawStack(p, blocks, x, y, align);
     }
+    ctx.save();
+    block.draw(p, x, box.y, align);
+    ctx.restore();
   }
   ctx.restore();
-}
-
-function drawStack(p: Painter, blocks: Block[], x: number, top: number, align: Align): void {
-  let y = top;
-  for (const b of blocks) {
-    p.ctx.save();
-    b.draw(p, x, y, align);
-    p.ctx.restore();
-    y += b.height + p.m.gap;
-  }
+  return placed.map((e) => e.box);
 }
 
 function drawOuterBorder(p: Painter): void {
@@ -485,7 +442,7 @@ function drawOuterBorder(p: Painter): void {
   const { ctx, k, m, scene } = p;
   const W = scene.paper.widthMm;
   const H = scene.paper.heightMm;
-  const d = m.unit * 0.014 * Number(p.c.outerBorderInset ?? 1);
+  const d = m.unit * 0.014;
   const rect = (inset: number, width: number) => {
     ctx.lineWidth = width * k;
     ctx.strokeRect((d + inset) * k, (d + inset) * k, (W - 2 * (d + inset)) * k, (H - 2 * (d + inset)) * k);
@@ -512,12 +469,11 @@ function drawGraticule(p: Painter): void {
   const [west, north] = scene.unproject(r.x, r.y);
   const [east, south] = scene.unproject(r.x + r.w, r.y + r.h);
   const shortSpan = Math.min(east - west, north - south);
-  const step = graticuleStep(shortSpan, Math.max(2, Math.round(5 * Number(c.gridDensity ?? 1))));
+  const step = graticuleStep(shortSpan, 5);
   const lngs = graticuleValues(west, east, step);
   const lats = graticuleValues(south, north, step);
   const xOf = (lng: number) => scene.project([lng, scene.center[1]])[0];
   const yOf = (lat: number) => scene.project([scene.center[0], lat])[1];
-  const weight = Number(c.gridWidth ?? 1);
 
   if (gridMode === 'lines' || gridMode === 'ticks') {
     ctx.save();
@@ -525,10 +481,10 @@ function drawGraticule(p: Painter): void {
     ctx.rect(r.x * k, r.y * k, r.w * k, r.h * k);
     ctx.clip();
     ctx.strokeStyle = ink;
-    ctx.globalAlpha = Number(c.gridOpacity ?? 0.75);
+    ctx.globalAlpha = 0.75;
     ctx.beginPath();
     if (gridMode === 'lines') {
-      ctx.lineWidth = 0.12 * weight * k;
+      ctx.lineWidth = 0.12 * k;
       for (const lng of lngs) {
         ctx.moveTo(xOf(lng) * k, r.y * k);
         ctx.lineTo(xOf(lng) * k, (r.y + r.h) * k);
@@ -540,7 +496,7 @@ function drawGraticule(p: Painter): void {
     } else {
       // Survey crosses at each intersection.
       const arm = 1.6;
-      ctx.lineWidth = 0.2 * weight * k;
+      ctx.lineWidth = 0.2 * k;
       for (const lng of lngs) {
         for (const lat of lats) {
           const [x, y] = scene.project([lng, lat]);
