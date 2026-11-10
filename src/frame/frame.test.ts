@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { StyleConfig } from '../../types';
-import { labelFactor } from './labels';
-import { migrate } from './migrate';
-import { topographicMapRect } from './overlay';
-import { THEME_KEYS, THEMES } from './themes';
+import type { StyleConfig } from '../types';
+import { labelFactor } from '../styles/topographic/labels';
+import { migrate } from '../styles/topographic/migrate';
+import { frameMapRect } from './frame';
+import { THEME_KEYS, THEMES } from '../styles/topographic/themes';
 
 const A3_LANDSCAPE = { widthMm: 420, heightMm: 297 };
 
@@ -26,7 +26,7 @@ const everythingOnMap: StyleConfig = {
 
 describe('frame layout', () => {
   it('leaves room on every side by default', () => {
-    const r = topographicMapRect(base, A3_LANDSCAPE);
+    const r = frameMapRect(base, A3_LANDSCAPE);
     expect(r.x).toBeGreaterThan(5);
     expect(r.y).toBeGreaterThan(20);
     expect(r.x + r.w).toBeLessThan(A3_LANDSCAPE.widthMm - 5);
@@ -34,24 +34,24 @@ describe('frame layout', () => {
   });
 
   it('is full bleed with no borders and everything on the map', () => {
-    expect(topographicMapRect({ ...base, ...everythingOnMap }, A3_LANDSCAPE)).toEqual({ x: 0, y: 0, w: 420, h: 297 });
+    expect(frameMapRect({ ...base, ...everythingOnMap }, A3_LANDSCAPE)).toEqual({ x: 0, y: 0, w: 420, h: 297 });
   });
 
   it('keeps a border only on the sides that have one', () => {
-    const r = topographicMapRect({ ...base, ...everythingOnMap, marginBottom: 1 }, A3_LANDSCAPE);
+    const r = frameMapRect({ ...base, ...everythingOnMap, marginBottom: 1 }, A3_LANDSCAPE);
     expect(r).toMatchObject({ x: 0, y: 0, w: 420 });
     expect(r.h).toBeCloseTo(297 - 297 * 0.045, 6);
   });
 
   it('makes room for elements in a band even with no margin', () => {
-    const r = topographicMapRect({ ...base, ...everythingOnMap, titlePos: 'top-center' }, A3_LANDSCAPE);
+    const r = frameMapRect({ ...base, ...everythingOnMap, titlePos: 'top-center' }, A3_LANDSCAPE);
     expect(r.y).toBeGreaterThan(10);
     expect(r.y + r.h).toBe(297);
   });
 
   it('frees the band when its elements are hidden or empty', () => {
-    const shown = topographicMapRect(base, A3_LANDSCAPE);
-    const hidden = topographicMapRect({ ...base, note1Pos: 'hidden', subtitlePos: 'hidden', note2: '', title: '' }, A3_LANDSCAPE);
+    const shown = frameMapRect(base, A3_LANDSCAPE);
+    const hidden = frameMapRect({ ...base, note1Pos: 'hidden', subtitlePos: 'hidden', note2: '', title: '' }, A3_LANDSCAPE);
     expect(hidden.y).toBeLessThan(shown.y);
   });
 });

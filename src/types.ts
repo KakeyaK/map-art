@@ -90,6 +90,29 @@ export interface ArtStyle {
   drawOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, config: StyleConfig): void;
   /** Font families the overlay draws with, loaded before every draw. */
   fonts(config: StyleConfig): string[];
+  /**
+   * Data that isn't in the map tiles and depends on the visible area (e.g.
+   * transit lines from an API). Called whenever the view or config settles.
+   */
+  data?: StyleData;
   /** Text fields to fill in when the user picks a place from search. */
   textForPlace(place: Place): Record<string, string>;
+}
+
+export interface DataStatus {
+  message: string;
+  state: 'loading' | 'ok' | 'error' | 'idle';
+}
+
+export interface StyleData {
+  /**
+   * Makes sure data for `bounds` is loaded. Resolves true when the map style or
+   * frame changed and must be rebuilt.
+   */
+  sync(
+    view: { bounds: [west: number, south: number, east: number, north: number]; zoom: number },
+    config: StyleConfig,
+    signal: AbortSignal,
+    status: (s: DataStatus) => void,
+  ): Promise<boolean>;
 }

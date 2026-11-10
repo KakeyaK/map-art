@@ -1,4 +1,4 @@
-import { DEM_ATTRIBUTION, OSM_ATTRIBUTION } from '../../credits';
+import { DEM_ATTRIBUTION, OSM_ATTRIBUTION } from '../credits';
 import {
   formatDegrees,
   formatScale,
@@ -6,8 +6,23 @@ import {
   graticuleValues,
   groupThousands,
   niceFloor,
-} from '../../geo';
-import type { OverlayScene, PaperSize, RectMm, StyleConfig } from '../../types';
+} from '../geo';
+import type { OverlayScene, PaperSize, RectMm, StyleConfig } from '../types';
+
+/** One row of a map legend, e.g. a metro line. */
+export interface LegendItem {
+  color: string;
+  /** Short code drawn inside the swatch ("1", "L9"); may be empty. */
+  ref: string;
+  label: string;
+  /** Swatch shape: a pill for lines, a dashed bar for ferries, a thin bar for buses. */
+  kind?: 'line' | 'dashed' | 'thin';
+}
+
+/** Content a style supplies to the frame besides its config. */
+export interface FrameExtras {
+  legend?: LegendItem[];
+}
 
 const STRINGS: Record<string, { scale: string }> = {
   en: { scale: 'Scale' },
@@ -46,7 +61,7 @@ export const SLOT_OPTIONS = [
 ];
 
 /** Frame elements in stacking order: earlier ones sit higher when they share a slot. */
-export const ELEMENTS = ['title', 'note1', 'subtitle', 'note2', 'note3', 'scale', 'north', 'attrib'] as const;
+export const ELEMENTS = ['title', 'note1', 'subtitle', 'note2', 'note3', 'legend', 'scale', 'north', 'attrib'] as const;
 type ElementId = (typeof ELEMENTS)[number];
 
 type Align = 'left' | 'center' | 'right';
@@ -290,7 +305,98 @@ function northBlock(c: StyleConfig, m: Metrics): Block {
   };
 }
 
-function elementBlock(id: ElementId, c: StyleConfig, m: Metrics): Block | null {
+function legendBlock(items: LegendItem[], c: StyleConfig, m: Metrics): Block | null {
+  if (!items.length) return null;
+  const size = m.meta * Number(c.legendSize ?? 1);
+  const cols = Math.max(1, Math.min(items.length, Math.round(Number(c.legendColumns ?? 1))));
+  const rows = Math.ceil(items.length / cols);
+  const row = size * 1.75;
+  const heading = splitLines(String(c.legendTitle ?? '')).filter((l) => l.trim());
+  const headSize = size * 0.85;
+  const headH = heading.length ? heading.length * headSize * 1.35 + size * 0.4 : 0;
+  const pillW = size * 2.6;
+  const pillH = size * 1.3;
+  const gapX = size * 0.6;
+  const colGap = size * 1.6;
+  const fam = textFamily(c);
+  const labelWidth = (p: Painter) => {
+    setFont(p, size, fam, 400, 0.02);
+    return Math.max(...items.map((it) => p.ctx.measureText(it.label).width)) / p.k;
+  };
+  return {
+    height: headH + rows * row,
+    width(p) {
+      const colW = pillW + gapX + labelWidth(p);
+      let w = cols * colW + (cols - 1) * colGap;
+      if (heading.length) {
+        setFont(p, headSize, fam, 600, 0.08);
+        w = Math.max(w, ...heading.map((l) => p.ctx.measureText(l).width / p.k));
+      }
+      return w;
+    },
+    draw(p, x, top, align) {
+      const { ctx, k } = p;
+      const w = this.width(p);
+      const left = align === 'left' ? x : align === 'center' ? x - w / 2 : x - w;
+      const colW = pillW + gapX + labelWidth(p);
+      const ink = String(c.frame);
+      if (heading.length) {
+        setFont(p, headSize, fam, 600, 0.08);
+        ctx.fillStyle = ink;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        heading.forEach((l, i) => ctx.fillText(fillTokens(l, p.scene), left * k, (top + i * headSize * 1.35) * k));
+      }
+      items.forEach((it, i) => {
+        // Fill column by column so a legend reads top to bottom.
+        const col = Math.floor(i / rows);
+        const r = i % rows;
+        const x0 = left + col * (colW + colGap);
+        const cy = top + headH + r * row + row / 2;
+        ctx.fillStyle = it.color;
+        ctx.strokeStyle = it.color;
+        if (it.kind === 'dashed' || it.kind === 'thin') {
+          ctx.lineWidth = (it.kind === 'thin' ? pillH * 0.22 : pillH * 0.4) * k;
+          ctx.setLineDash(it.kind === 'dashed' ? [pillH * 0.45 * k, pillH * 0.3 * k] : []);
+          ctx.lineCap = 'butt';
+          ctx.beginPath();
+          ctx.moveTo(x0 * k, cy * k);
+          ctx.lineTo((x0 + pillW) * k, cy * k);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else {
+          ctx.beginPath();
+          ctx.roundRect(x0 * k, (cy - pillH / 2) * k, pillW * k, pillH * k, (pillH / 2) * k);
+          ctx.fill();
+          if (it.ref) {
+            setFont(p, size * (it.ref.length > 2 ? 0.7 : 0.85), fam, 700);
+            ctx.fillStyle = readableOn(it.color);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(it.ref, (x0 + pillW / 2) * k, (cy + size * 0.04) * k);
+          }
+        }
+        setFont(p, size, fam, 400, 0.02);
+        ctx.fillStyle = ink;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(it.label, (x0 + pillW + gapX) * k, (cy + size * 0.04) * k);
+      });
+    },
+  };
+}
+
+/** Black or white, whichever reads better on `color` (a #rrggbb or #rgb hex). */
+export function readableOn(color: string): string {
+  let hex = color.replace('#', '');
+  if (hex.length === 3) hex = [...hex].map((ch) => ch + ch).join('');
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return '#ffffff';
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.6 ? '#111111' : '#ffffff';
+}
+
+function elementBlock(id: ElementId, c: StyleConfig, m: Metrics, extras: FrameExtras): Block | null {
   const text = (key: string) => {
     const lines = splitLines(String(c[key] ?? ''));
     return lines.some((l) => l.trim()) ? lines : [];
@@ -321,6 +427,8 @@ function elementBlock(id: ElementId, c: StyleConfig, m: Metrics): Block | null {
     case 'note3':
     case 'subtitle':
       return notes(id);
+    case 'legend':
+      return legendBlock(extras.legend ?? [], c, m);
     case 'scale':
       return scaleBlock(c, m);
     case 'north':
@@ -344,12 +452,12 @@ function slotOf(c: StyleConfig, id: ElementId): Slot {
 }
 
 /** Blocks grouped by slot, in stacking order. */
-function blocksBySlot(c: StyleConfig, m: Metrics): Map<Slot, Block[]> {
+function blocksBySlot(c: StyleConfig, m: Metrics, extras: FrameExtras): Map<Slot, Block[]> {
   const out = new Map<Slot, Block[]>();
   for (const id of ELEMENTS) {
     const slot = slotOf(c, id);
     if (slot === 'hidden') continue;
-    const block = elementBlock(id, c, m);
+    const block = elementBlock(id, c, m, extras);
     if (!block) continue;
     out.set(slot, [...(out.get(slot) ?? []), block]);
   }
@@ -361,9 +469,9 @@ const stackHeight = (blocks: Block[] | undefined, gap: number) =>
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 
-function layout(c: StyleConfig, paper: PaperSize) {
+function layout(c: StyleConfig, paper: PaperSize, extras: FrameExtras) {
   const m = metrics(c, paper);
-  const slots = blocksBySlot(c, m);
+  const slots = blocksBySlot(c, m, extras);
   const band = (prefix: 'top' | 'bottom') =>
     Math.max(...(['left', 'center', 'right'] as const).map((a) => stackHeight(slots.get(`${prefix}-${a}`), m.gap)));
   const topContent = band('top');
@@ -379,8 +487,9 @@ function layout(c: StyleConfig, paper: PaperSize) {
   return { m, slots, rect: { x: left, y: top, w, h } as RectMm };
 }
 
-export function topographicMapRect(config: StyleConfig, paper: PaperSize): RectMm {
-  return layout(config, paper).rect;
+/** Where the map sits on the sheet once every frame element has its room. */
+export function frameMapRect(config: StyleConfig, paper: PaperSize, extras: FrameExtras = {}): RectMm {
+  return layout(config, paper, extras).rect;
 }
 
 export function fillTokens(text: string, scene: OverlayScene): string {
@@ -396,9 +505,15 @@ export function fillTokens(text: string, scene: OverlayScene): string {
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
 
-export function drawTopographicOverlay(ctx: CanvasRenderingContext2D, scene: OverlayScene, c: StyleConfig): void {
+/** Draws the sheet margin, graticule, borders and every frame element, in paper millimetres. */
+export function drawFrame(
+  ctx: CanvasRenderingContext2D,
+  scene: OverlayScene,
+  c: StyleConfig,
+  extras: FrameExtras = {},
+): void {
   const k = scene.pxPerMm;
-  const { m, slots } = layout(c, scene.paper);
+  const { m, slots } = layout(c, scene.paper, extras);
   const r = scene.mapRect;
   const p: Painter = { ctx, scene, k, c, m };
   const W = scene.paper.widthMm;

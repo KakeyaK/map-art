@@ -12,11 +12,24 @@ npm test         # unit tests (scale math, graticule, JPEG dpi)
 npm run build    # static site in dist/
 ```
 
+## Art styles
+
+- **Topographic survey**: survey-sheet look with contours, graticule and scale.
+- **Public transport**: metro, suburban train, monorail/light rail, tram, ferry and bus lines in their
+  official colours, with stations, interchanges and an automatic legend. The background can be a quiet
+  city map, just water and parks, or nothing at all (lines only).
+
+Both share the same frame (title, notes, legend, scale, borders...), set from the sidebar.
+
 ## How it works
 
 - **Data** (all public, no API keys):
   - Streets, water, land use and labels: [OpenFreeMap](https://openfreemap.org) vector tiles (OpenMapTiles schema)
   - Elevation: AWS Terrain Tiles (Terrarium), which [maplibre-contour](https://github.com/onthegomap/maplibre-contour) turns into contour lines
+  - Public transport: OpenStreetMap route relations through the [Overpass API](https://overpass-api.de).
+    It's one source for the whole world; quality depends on how well a city's lines are mapped in OSM.
+    Answers are cached in the browser for a week. Buses load only when zoomed in, since big cities
+    have thousands of routes
   - Search: [Nominatim](https://nominatim.org). Its usage policy allows at most 1 request/s, so the app searches only when you submit
 - **What you see is what prints.** Layout runs in paper millimetres. The map is laid out at
   1 CSS px = 1/96 in of paper (times *Map detail*) and shrunk on screen with a CSS transform.
@@ -52,8 +65,10 @@ Implement `ArtStyle` (`src/types.ts`) and register it in `src/styles/registry.ts
 | `drawOverlay`     | frame / title / legend drawn in mm on a canvas               |
 | `fonts`           | fonts to load before drawing                                 |
 | `textForPlace`    | text fields to fill when a place is picked in search         |
+| `data`            | optional: fetch data for the visible area (see `styles/transit/data.ts`) |
 
-`src/styles/topographic/` is the reference implementation.
+`src/styles/topographic/` is the reference implementation. Styles that use `drawFrame` /
+`frameControls` from `src/frame/` get the configurable frame for free.
 
 ## Limits
 

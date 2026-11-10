@@ -340,6 +340,8 @@ exportButton.addEventListener('click', async () => {
   exportButton.disabled = true;
   exportStatus.className = 'status';
   try {
+    exportStatus.textContent = 'Waiting for map data…';
+    await editor.dataReady();
     const blob = await renderPoster({
       style: style(),
       config: config(),
