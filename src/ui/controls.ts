@@ -1,11 +1,17 @@
-import type { Control, StyleConfig } from '../types';
+import type { Control, StyleConfig, StyleValue } from '../types';
 
 /** Builds a form field for `control`, calling `onChange` with the new value. */
 export function renderControl(
   control: Control,
   config: StyleConfig,
-  onChange: (key: string, value: string | number | boolean) => void,
+  onChange: (key: string, value: StyleValue) => void,
 ): HTMLElement {
+  if (control.type === 'heading') {
+    const h = document.createElement('h3');
+    h.className = 'field-heading';
+    h.textContent = control.label;
+    return h;
+  }
   const row = document.createElement('label');
   row.className = `field field-${control.type}`;
   const name = document.createElement('span');
@@ -18,6 +24,17 @@ export function renderControl(
       const input = document.createElement('input');
       input.type = 'text';
       input.value = String(value ?? '');
+      input.dataset.key = control.key;
+      if (control.placeholder) input.placeholder = control.placeholder;
+      input.addEventListener('input', () => onChange(control.key, input.value));
+      row.append(name, input);
+      if (control.hint) row.append(hint(control.hint));
+      break;
+    }
+    case 'textarea': {
+      const input = document.createElement('textarea');
+      input.rows = control.rows ?? 2;
+      input.value = String(value ?? '').replaceAll('\\n', '\n');
       input.dataset.key = control.key;
       if (control.placeholder) input.placeholder = control.placeholder;
       input.addEventListener('input', () => onChange(control.key, input.value));
@@ -40,6 +57,7 @@ export function renderControl(
       input.checked = Boolean(value);
       input.addEventListener('change', () => onChange(control.key, input.checked));
       row.append(input, name);
+      if (control.hint) row.append(hint(control.hint));
       break;
     }
     case 'range': {
@@ -58,6 +76,7 @@ export function renderControl(
       head.className = 'field-head';
       head.append(name, out);
       row.append(head, input);
+      if (control.hint) row.append(hint(control.hint));
       break;
     }
     case 'select': {
@@ -65,6 +84,7 @@ export function renderControl(
       for (const o of control.options) select.add(new Option(o.label, o.value, false, o.value === String(value)));
       select.addEventListener('change', () => onChange(control.key, select.value));
       row.append(name, select);
+      if (control.hint) row.append(hint(control.hint));
       break;
     }
   }
