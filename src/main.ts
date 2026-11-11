@@ -313,13 +313,11 @@ function fillDetail(id: string, detail: HTMLElement): void {
   syncPosition(id);
 }
 
-/** Changes alignment while keeping the element where it is on the sheet. */
+/** Lines the element up with the map frame's left edge, centre or right edge, keeping its height. */
 function setAlign(id: string, align: 'left' | 'center' | 'right'): void {
-  const box = editor.elementBox(id);
-  if (box) {
-    const x = align === 'left' ? box.x : align === 'center' ? box.x + box.w / 2 : box.x + box.w;
-    setConfigValue(`${id}X`, x / paperSize(state.print).widthMm);
-  }
+  const r = editor.mapRect();
+  const x = align === 'left' ? r.x : align === 'center' ? r.x + r.w / 2 : r.x + r.w;
+  setConfigValue(`${id}X`, x / paperSize(state.print).widthMm);
   setConfigValue(`${id}Align`, align);
   for (const b of card(id)?.querySelectorAll<HTMLElement>('[data-align]') ?? []) {
     b.classList.toggle('active', b.dataset.align === align);

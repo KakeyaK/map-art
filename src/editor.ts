@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import { layoutGrid, snapTo, type LayoutGrid } from './grid';
 import { paperSize, cssPxPerMm, type PrintSettings } from './paper';
 import { buildScene, loadFonts, mapCssSize } from './scene';
-import type { ArtStyle, ElementBox, LngLat, OverlayScene, StyleConfig } from './types';
+import type { ArtStyle, ElementBox, LngLat, OverlayScene, RectMm, StyleConfig } from './types';
 
 export interface View {
   center: LngLat;
@@ -131,6 +131,11 @@ export class Editor {
   /** Where an element was last drawn, in paper mm. */
   elementBox(id: string): ElementBox | undefined {
     return this.boxes.find((b) => b.id === id);
+  }
+
+  /** The map window on the sheet, in millimetres. */
+  mapRect(): RectMm {
+    return this.style.mapRect(this.config, paperSize(this.print));
   }
 
   /** Frame-only changes (texts, positions) leave the map style alone, which keeps dragging smooth. */
